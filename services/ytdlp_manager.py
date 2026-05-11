@@ -1,8 +1,11 @@
 import asyncio
+import logging
 import shutil
 from pathlib import Path
 from typing import Optional, AsyncGenerator, Callable
 from config import DATA_DIR
+
+logger = logging.getLogger(__name__)
 
 
 class YtDlpManager:
@@ -25,7 +28,7 @@ class YtDlpManager:
         stdout, _ = await proc.communicate()
         try:
             return max(int(stdout.decode().strip()), 1)
-        except:
+        except ValueError:
             return 1
 
     async def download_stream(
@@ -94,6 +97,7 @@ class YtDlpManager:
         except Exception as e:
             if proc.returncode is None:
                 proc.kill()
+            logger.exception("yt-dlp download failed")
             yield f"ERROR: {e}"
         if tmp.exists():
             shutil.rmtree(tmp, ignore_errors=True)

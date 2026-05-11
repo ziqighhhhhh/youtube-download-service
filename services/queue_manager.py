@@ -1,5 +1,8 @@
 import asyncio
+import logging
 from typing import Dict, Optional, Callable
+
+logger = logging.getLogger(__name__)
 
 
 class QueueManager:
@@ -17,7 +20,7 @@ class QueueManager:
             try:
                 await coro()
             except Exception as e:
-                print(f"Task {task_id} failed: {e}")
+                logger.exception("Task %s failed", task_id)
             finally:
                 self.active_tasks.pop(task_id, None)
                 self.progress_handlers.pop(task_id, None)
@@ -29,7 +32,8 @@ class QueueManager:
         for h in self.progress_handlers.get(task_id, []):
             try:
                 await h(message)
-            except:
+            except Exception:
+                logger.exception("Progress handler failed for task_id=%s", task_id)
                 pass
 
 

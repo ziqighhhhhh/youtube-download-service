@@ -28,6 +28,8 @@ async def users(req: Request, db: Session = Depends(get_db)):
 @router.post("/users/{uid}/recharge")
 async def recharge(uid: int, amount: float, req: Request, db: Session = Depends(get_db)):
     check_admin(req, db)
+    if amount <= 0:
+        raise HTTPException(400, "充值金额必须大于 0")
     nb = billing_service.add_balance(db, uid, amount)
     return {"message": f"已充值，余额: {nb}"}
 

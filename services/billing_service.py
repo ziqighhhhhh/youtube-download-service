@@ -30,6 +30,8 @@ def deduct_balance(db: Session, user_id: int, cost: float, desc: str = "") -> bo
 def add_balance(
     db: Session, user_id: int, amount: float, desc: str = "管理员充值"
 ) -> float:
+    if amount <= 0:
+        raise ValueError("amount must be greater than 0")
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise ValueError(f"User {user_id} not found")

@@ -1,9 +1,11 @@
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse
 from starlette.middleware.sessions import SessionMiddleware
 from config import SECRET_KEY, STATIC_DIR, TEMPLATES_DIR, DATA_DIR, USERS_DIR
+from database import get_db
+from sqlalchemy.orm import Session
 
 app = FastAPI(title="YouTube Batch Downloader")
 app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY)
@@ -96,5 +98,10 @@ async def bookmarklet_page(request: Request):
 
 
 @app.get("/admin", response_class=HTMLResponse)
-async def admin_page(request: Request):
+async def admin_page(request: Request, db: Session = Depends(get_db)):
+    if _need_login(request):
+        return RedirectResponse(url="/login")
+    from routes.admin import check_admin
+
+    check_admin(request, db)
     return templates.TemplateResponse("admin.html", {"request": request})

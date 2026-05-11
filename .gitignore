@@ -3,9 +3,12 @@
 __pycache__/
 *.py[cod]
 *.so
+.pytest_cache/
+pytest-cache-files-*/
 .venv/
 env/
 data/*.db
+data/
 .vscode/
 .idea/
 .DS_Store

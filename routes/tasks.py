@@ -30,7 +30,8 @@ async def create(data: TaskSubmit, request: Request, db: Session = Depends(get_d
     cp = str(cookie_service.get_user_cookie_path(uid))
     mgr = YtDlpManager()
     try:
-        vc = await mgr.get_video_count(data.url)
+        url = str(data.url)
+        vc = await mgr.get_video_count(url)
     except Exception as e:
         raise HTTPException(500, f"预扫描失败: {e}")
 
@@ -44,7 +45,7 @@ async def create(data: TaskSubmit, request: Request, db: Session = Depends(get_d
 
     task = Task(
         user_id=uid,
-        youtube_url=data.url,
+        youtube_url=url,
         status="downloading",
         video_count_total=vc,
         cost=cost,
@@ -58,7 +59,7 @@ async def create(data: TaskSubmit, request: Request, db: Session = Depends(get_d
     async def run():
         y = YtDlpManager()
         try:
-            async for line in y.download_stream(data.url, cp):
+            async for line in y.download_stream(url, cp):
                 await qm.broadcast_progress(task.id, line)
         except Exception as e:
             task.status = "failed"
@@ -70,7 +71,7 @@ async def create(data: TaskSubmit, request: Request, db: Session = Depends(get_d
         task.completed_at = datetime.utcnow()
         db.commit()
 
-    qm.active_tasks[task.id] = asyncio.create_task(run())
+    qm.active_tasks[task.id] = asyncio.create_task(qm.enqueue(task.id, run))
     return {"task_id": task.id, "message": "已提交"}
 
 
@@ -100,14 +101,23 @@ async def get_task(tid: int, request: Request, db: Session = Depends(get_db)):
 
 
 @router.websocket("/ws/{tid}")
-async def ws(websocket: WebSocket, tid: int):
+async def ws(websocket: WebSocket, tid: int, db: Session = Depends(get_db)):
+    uid = websocket.session.get("user_id")
+    if not uid:
+        await websocket.close(code=1008)
+        return
+    task = db.query(Task).filter(Task.id == tid, Task.user_id == uid).first()
+    if not task:
+        await websocket.close(code=1008)
+        return
+
     await websocket.accept()
     qm = get_queue_manager()
 
     async def h(m):
         try:
             await websocket.send_text(m)
-        except:
+        except Exception:
             pass
 
     qm.register_progress_handler(tid, h)

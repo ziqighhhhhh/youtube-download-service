@@ -1,8 +1,11 @@
 from pathlib import Path
 from datetime import datetime
+import logging
 from sqlalchemy.orm import Session
 from models.user import User
 from config import USERS_DIR
+
+logger = logging.getLogger(__name__)
 
 
 def get_user_cookie_path(user_id: int) -> Path:
@@ -16,12 +19,12 @@ def save_cookie(db: Session, user_id: int, text: str) -> bool:
         get_user_cookie_path(user_id).write_text(text, encoding="utf-8")
         user = db.query(User).filter(User.id == user_id).first()
         if user:
-            user.cookie_text = text
+            user.cookie_text = None
             user.cookie_updated_at = datetime.utcnow()
             db.commit()
         return True
     except Exception as e:
-        print(f"Save cookie failed: {e}")
+        logger.exception("Save cookie failed for user_id=%s", user_id)
         return False
 
 
@@ -46,5 +49,5 @@ def delete_cookie(db: Session, user_id: int) -> bool:
             db.commit()
         return True
     except Exception as e:
-        print(f"Delete cookie failed: {e}")
+        logger.exception("Delete cookie failed for user_id=%s", user_id)
         return False
