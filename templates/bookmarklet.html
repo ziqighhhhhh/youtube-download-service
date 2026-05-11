@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}书签脚本教程{% endblock %}
+{% block content %}
+<div class="bg-white rounded-lg shadow p-6 space-y-6">
+    <h2 class="text-xl font-bold">Bookmarklet — 一键获取 Cookie</h2>
+    <p class="text-gray-600">将下方代码保存为浏览器书签，在 YouTube 页面点击即可自动复制 Cookie 到剪贴板。</p>
+
+    <pre class="bg-gray-100 p-4 rounded overflow-x-auto text-sm"><code id="bkCode">javascript:(function(){var c=document.cookie;if(c.length>0){if(navigator.clipboard){navigator.clipboard.writeText(c).then(function(){alert('Cookie 已复制到剪贴板！请回到下载网站粘贴。');});}else{prompt('请复制以下 Cookie：',c);}}else{alert('未找到 Cookie，请先登录 YouTube。');}})();</code></pre>
+
+    <button onclick="copyBookmarklet()" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition">复制代码</button>
+
+    <h3 class="font-bold">使用方法</h3>
+    <ol class="list-decimal list-inside space-y-2 text-gray-700">
+        <li>打开 YouTube.com 并登录</li>
+        <li>右键浏览器书签栏 → 添加书签 → 将上方代码粘贴到「网址」字段</li>
+        <li>在 YouTube 页面点击该书签</li>
+        <li>回到本网站的 <a href="/account" class="text-blue-600">账户设置</a> 页面，粘贴 Cookie 并保存</li>
+    </ol>
+
+    <h3 class="font-bold">备选方案：手动复制</h3>
+    <ol class="list-decimal list-inside space-y-2 text-gray-700">
+        <li>在 YouTube 页面按 F12 打开开发者工具</li>
+        <li>切换到 Console 标签</li>
+        <li>输入 <code class="bg-gray-100 px-1 rounded">document.cookie</code> 并回车</li>
+        <li>复制输出内容，粘贴到账户设置页</li>
+    </ol>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+function copyBookmarklet() {
+    const code = document.getElementById('bkCode').textContent;
+    navigator.clipboard.writeText(code).then(()=>showToast('已复制','success')).catch(()=>showToast('复制失败，请手动选择','error'));
+}
+</script>
+{% endblock %}

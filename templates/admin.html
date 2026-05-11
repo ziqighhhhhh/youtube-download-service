@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}管理员后台{% endblock %}
+{% block content %}
+<div class="space-y-6">
+    <div class="bg-white rounded-lg shadow p-6">
+        <h3 class="font-bold mb-4">用户列表</h3>
+        <div id="ul"><p class="text-gray-400 text-sm">加载中...</p></div>
+    </div>
+
+    <div class="bg-white rounded-lg shadow p-6">
+        <h3 class="font-bold mb-4">任务监控</h3>
+        <div id="tk"><p class="text-gray-400 text-sm">加载中...</p></div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+async function loadAdmin(){
+    try {
+        const [ur, tr] = await Promise.all([fetch('/api/admin/users'), fetch('/api/admin/tasks')]);
+        if(ur.ok){
+            const u = await ur.json();
+            document.getElementById('ul').innerHTML = u.map(x=>`<div class="p-3 border-b flex justify-between items-center">
+                <span>${x.email}</span>
+                <div class="flex items-center space-x-4">
+                    <span class="text-sm text-gray-500">余额: ${x.balance} 次</span>
+                    <button onclick="recharge(${x.id})" class="text-blue-600 text-sm hover:underline">充值</button>
+                </div>
+            </div>`).join('');
+        }
+        if(tr.ok){
+            const t = await tr.json();
+            document.getElementById('tk').innerHTML = t.slice(0,20).map(x=>`<div class="p-3 border-b text-sm">
+                <span class="text-gray-600">${x.youtube_url}</span>
+                <span class="ml-2 ${x.status==='completed'?'text-green-600':x.status==='failed'?'text-red-600':'text-yellow-600'}">${x.status}</span>
+                <span class="ml-2 text-gray-400">${x.video_count_success}/${x.video_count_total} | ${x.cost}次</span>
+            </div>`).join('');
+        }
+    } catch(e){ showToast('加载失败','error'); }
+}
+
+async function recharge(uid) {
+    const amount = prompt('输入充值次数：');
+    if(!amount) return;
+    const r = await fetch(`/api/admin/users/${uid}/recharge?amount=${amount}`, {method:'POST'});
+    const d = await r.json();
+    showToast(r.ok?d.detail:d.detail, r.ok?'success':'error');
+    if(r.ok) loadAdmin();
+}
+
+loadAdmin();
+</script>
+{% endblock %}
