@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import shutil
 from fastapi import Depends, FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -14,15 +15,17 @@ from sqlalchemy.orm import Session
 async def lifespan(app: FastAPI):
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     USERS_DIR.mkdir(parents=True, exist_ok=True)
+    if not shutil.which("yt-dlp"):
+        raise RuntimeError("yt-dlp not found on PATH. Install: pip install yt-dlp")
     from database import init_db, SessionLocal
-    from config import ADMIN_EMAIL, ADMIN_PASSWORD
+    from config import ADMIN_EMAIL, ADMIN_PASSWORD, DEFAULT_BALANCE
     from models.user import User
 
     init_db()
     db = SessionLocal()
     try:
         if not db.query(User).filter(User.email == ADMIN_EMAIL).first():
-            admin = User(email=ADMIN_EMAIL, balance=0)
+            admin = User(email=ADMIN_EMAIL, balance=DEFAULT_BALANCE)
             admin.set_password(ADMIN_PASSWORD)
             db.add(admin)
             db.commit()

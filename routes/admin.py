@@ -1,3 +1,5 @@
+from typing import List
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from database import get_db
@@ -6,7 +8,7 @@ from models.task import Task
 from services import billing_service
 from services.csrf_service import require_csrf
 from config import ADMIN_EMAIL
-from schemas.all import AdminRechargeRequest
+from schemas.all import AdminRechargeRequest, UserResponse, TaskResponse
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -21,7 +23,7 @@ def check_admin(req: Request, db: Session):
     return user
 
 
-@router.get("/users")
+@router.get("/users", response_model=List[UserResponse])
 async def users(req: Request, db: Session = Depends(get_db)):
     check_admin(req, db)
     return db.query(User).all()
@@ -40,7 +42,7 @@ async def recharge(
     return {"message": f"Recharged. Balance: {balance}"}
 
 
-@router.get("/tasks")
+@router.get("/tasks", response_model=List[TaskResponse])
 async def tasks(req: Request, db: Session = Depends(get_db)):
     check_admin(req, db)
     return db.query(Task).order_by(Task.created_at.desc()).limit(100).all()

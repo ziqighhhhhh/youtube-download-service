@@ -5,7 +5,10 @@
     <div class="bg-white rounded-lg shadow p-6">
         <div class="flex justify-between items-start">
             <h2 class="text-xl font-bold">Task #{{ task_id }}</h2>
-            <span id="statusBadge" class="px-2 py-1 text-sm rounded bg-yellow-100 text-yellow-700">downloading</span>
+            <div class="flex items-center space-x-3">
+                <span id="statusBadge" class="px-2 py-1 text-sm rounded bg-yellow-100 text-yellow-700">downloading</span>
+                <button id="cancelBtn" onclick="cancelTask()" class="hidden px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700">Cancel</button>
+            </div>
         </div>
         <div class="grid grid-cols-3 gap-4 mt-4 text-sm">
             <div><span class="text-gray-500">Total: </span><span id="totalVids" class="font-bold">-</span></div>
@@ -18,13 +21,18 @@
         <h3 class="font-bold mb-2">Realtime logs</h3>
         <div id="log" class="bg-gray-900 text-green-400 p-4 rounded h-96 overflow-y-auto font-mono text-sm space-y-0.5"></div>
     </div>
+
+    <div class="bg-white rounded-lg shadow p-6">
+        <h3 class="font-bold mb-2">Downloaded files</h3>
+        <div id="fileList"><p class="text-gray-400 text-sm">No files yet</p></div>
+    </div>
 </div>
 {% endblock %}
 {% block extra_js %}
 <script>
 const tid = {{ task_id }};
 const proto = location.protocol==='https:'?'wss:':'ws:';
-const ws = new WebSocket(`${proto}//${location.host}/api/tasks/ws/${tid}`);
+const ws = new WebSocket(`${proto}//${location.host}/api/tasks/ws/${tid}?uid=${encodeURIComponent(CSRF_TOKEN)}`);
 ws.onmessage = event => {
     const log = document.getElementById('log');
     const line = document.createElement('div');
@@ -34,6 +42,49 @@ ws.onmessage = event => {
 };
 ws.onerror = () => showToast('WebSocket failed','error');
 
+function updateBadge(task) {
+    const badge = document.getElementById('statusBadge');
+    badge.textContent = task.status;
+    badge.className = `px-2 py-1 text-sm rounded ${task.status==='completed'?'bg-green-100 text-green-700':task.status==='failed'?'bg-red-100 text-red-700':task.status==='cancelled'?'bg-gray-100 text-gray-700':'bg-yellow-100 text-yellow-700'}`;
+    const btn = document.getElementById('cancelBtn');
+    if (task.status==='pending'||task.status==='downloading') {
+        btn.classList.remove('hidden');
+    } else {
+        btn.classList.add('hidden');
+    }
+}
+
+function fmtSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1048576) return (bytes/1024).toFixed(1) + ' KB';
+    if (bytes < 1073741824) return (bytes/1048576).toFixed(1) + ' MB';
+    return (bytes/1073741824).toFixed(2) + ' GB';
+}
+
+async function loadFiles() {
+    try {
+        const r = await fetch(`/api/tasks/${tid}/files`);
+        if (!r.ok) return;
+        const files = await r.json();
+        const el = document.getElementById('fileList');
+        if (files.length === 0) { el.innerHTML = '<p class="text-gray-400 text-sm">No files yet</p>'; return; }
+        el.innerHTML = files.map(f => `<div class="flex justify-between items-center p-2 border-b">
+            <span class="text-sm truncate max-w-sm">${escapeHtml(f.name)}</span>
+            <div class="flex items-center space-x-3">
+                <span class="text-xs text-gray-500">${fmtSize(f.size)}</span>
+                <a href="/api/tasks/${tid}/download/${encodeURIComponent(f.path)}" class="text-blue-600 text-sm hover:underline">Download</a>
+            </div>
+        </div>`).join('');
+    } catch(e) {}
+}
+
+async function cancelTask() {
+    if (!confirm('Cancel this task?')) return;
+    const r = await csrfFetch(`/api/tasks/${tid}/cancel`, {method:'POST'});
+    const d = await r.json();
+    showToast(r.ok ? d.message : d.detail, r.ok ? 'success' : 'error');
+}
+
 setInterval(async ()=>{
     try {
         const response = await fetch(`/api/tasks/${tid}`);
@@ -42,11 +93,10 @@ setInterval(async ()=>{
         document.getElementById('totalVids').textContent = task.video_count_total;
         document.getElementById('costVal').textContent = task.cost;
         document.getElementById('progress').textContent = `${task.video_count_success}/${task.video_count_failed}`;
-        const badge = document.getElementById('statusBadge');
-        badge.textContent = task.status;
-        badge.className = `px-2 py-1 text-sm rounded ${task.status==='completed'?'bg-green-100 text-green-700':task.status==='failed'?'bg-red-100 text-red-700':'bg-yellow-100 text-yellow-700'}`;
-        if(task.status==='completed'||task.status==='failed'){
+        updateBadge(task);
+        if(task.status==='completed'||task.status==='failed'||task.status==='cancelled'){
             ws.close();
+            loadFiles();
         }
     } catch(e){}
 }, 3000);

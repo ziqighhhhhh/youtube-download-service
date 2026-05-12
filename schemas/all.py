@@ -1,4 +1,6 @@
 from pydantic import BaseModel, EmailStr, Field, HttpUrl, field_validator
+from datetime import datetime
+from typing import Optional
 
 
 class UserRegister(BaseModel):
@@ -35,3 +37,38 @@ class RechargeRequest(BaseModel):
 
 class AdminRechargeRequest(BaseModel):
     amount: float = Field(gt=0, le=1_000_000)
+
+
+class TaskResponse(BaseModel):
+    id: int
+    user_id: int
+    youtube_url: str
+    status: str
+    video_count_total: int = 0
+    video_count_success: int = 0
+    video_count_failed: int = 0
+    cost: float = 0.0
+    error_message: Optional[str] = None
+    created_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+
+class UserResponse(BaseModel):
+    id: int
+    email: str
+    balance: float
+    cookie_updated_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+    is_active: int = 1
+
+    model_config = {"from_attributes": True}
+
+
+class UserInfoResponse(BaseModel):
+    id: int
+    email: str
+    balance: float
+    cookie_updated_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None

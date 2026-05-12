@@ -2,7 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from database import get_db
 from models.user import User
-from schemas.all import UserRegister, UserLogin
+from schemas.all import UserRegister, UserLogin, UserInfoResponse
+from config import DEFAULT_BALANCE
 from services.csrf_service import require_csrf
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -13,7 +14,7 @@ async def register(data: UserRegister, request: Request, db: Session = Depends(g
     require_csrf(request)
     if db.query(User).filter(User.email == data.email).first():
         raise HTTPException(400, "Email already registered")
-    user = User(email=data.email, balance=0)
+    user = User(email=data.email, balance=DEFAULT_BALANCE)
     user.set_password(data.password)
     db.add(user)
     db.commit()
@@ -39,7 +40,7 @@ async def logout(request: Request):
     return {"message": "Logged out"}
 
 
-@router.get("/me")
+@router.get("/me", response_model=UserInfoResponse)
 async def me(request: Request, db: Session = Depends(get_db)):
     uid = request.session.get("user_id")
     if not uid:
@@ -47,10 +48,4 @@ async def me(request: Request, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.id == uid).first()
     if not user:
         raise HTTPException(404, "User not found")
-    return {
-        "id": user.id,
-        "email": user.email,
-        "balance": user.balance,
-        "cookie_updated_at": user.cookie_updated_at,
-        "created_at": user.created_at,
-    }
+    return user

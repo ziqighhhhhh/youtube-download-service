@@ -107,3 +107,31 @@ def test_create_charged_task_rejects_insufficient_balance_without_task():
     assert user.balance == 0
     assert db.query(Task).count() == 0
     assert db.query(BillingRecord).count() == 0
+
+
+def test_approve_recharge_request_adds_balance_and_marks_request():
+    db = make_db()
+    user = DbUser(email="user@example.com", balance=0)
+    user.set_password("password123")
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    request = BillingRecord(
+        user_id=user.id,
+        action="recharge_request",
+        amount=25,
+        balance_after=0,
+        description="pending",
+    )
+    db.add(request)
+    db.commit()
+    db.refresh(request)
+
+    balance = billing_service.approve_recharge_request(db, request.id)
+
+    db.refresh(user)
+    db.refresh(request)
+    assert balance == 25
+    assert user.balance == 25
+    assert request.action == "recharge_approved"
+    assert db.query(BillingRecord).filter(BillingRecord.action == "refill").count() == 1

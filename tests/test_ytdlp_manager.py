@@ -83,3 +83,42 @@ def test_get_video_count_uses_cookies(monkeypatch):
 
     assert count == 3
     assert "--cookies" in calls[0][0]
+
+
+def test_download_stream_keeps_output_directory(monkeypatch):
+    class Stdout:
+        def __init__(self):
+            self.lines = [b"[download] 100% of file\n", b""]
+
+        def readline(self):
+            return self.lines.pop(0)
+
+    class PopenProc:
+        def __init__(self, *args, **kwargs):
+            self.stdout = Stdout()
+            self.returncode = 0
+
+        def wait(self):
+            return 0
+
+        def kill(self):
+            self.returncode = -9
+
+    monkeypatch.setattr(subprocess, "Popen", PopenProc)
+    manager = YtDlpManager()
+    target = Path("data") / f"download-test-{uuid4().hex}"
+
+    try:
+        lines = asyncio.run(_collect_download(manager, target))
+
+        assert target.exists()
+        assert lines[-1] == "__DONE__:1:0"
+    finally:
+        shutil.rmtree(target, ignore_errors=True)
+
+
+async def _collect_download(manager, target):
+    lines = []
+    async for line in manager.download_stream("https://youtu.be/x", "", target):
+        lines.append(line)
+    return lines

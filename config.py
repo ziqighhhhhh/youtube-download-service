@@ -17,7 +17,7 @@ DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DATA_DIR}/app.db")
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@example.com")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
 VIDEOS_PER_CHARGE = int(os.getenv("VIDEOS_PER_CHARGE", "10"))
-DEFAULT_BALANCE = float(os.getenv("DEFAULT_BALANCE", "0"))
+DEFAULT_BALANCE = float(os.getenv("DEFAULT_BALANCE", "100"))
 MAX_CONCURRENT_TASKS = int(os.getenv("MAX_CONCURRENT_TASKS", "3"))
 
 

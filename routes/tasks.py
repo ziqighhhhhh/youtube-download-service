@@ -4,10 +4,12 @@ from fastapi import (
     APIRouter,
     Depends,
     HTTPException,
+    Query,
     Request,
     WebSocket,
     WebSocketDisconnect,
 )
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from database import SessionLocal, get_db
 from models.task import Task
@@ -15,10 +17,13 @@ from services import cookie_service, billing_service
 from services.csrf_service import require_csrf
 from services.ytdlp_manager import YtDlpManager
 from services.queue_manager import get_queue_manager
-from schemas.all import TaskSubmit
-from config import MAX_CONCURRENT_TASKS
+from schemas.all import TaskSubmit, TaskResponse
+from config import MAX_CONCURRENT_TASKS, USERS_DIR
+from typing import List
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
+
+_active_managers: dict[int, YtDlpManager] = {}
 
 
 def _parse_done_line(line: str) -> tuple[int, int] | None:
@@ -72,8 +77,9 @@ async def create(data: TaskSubmit, request: Request, db: Session = Depends(get_d
         task_db = SessionLocal()
         ok = 0
         fail = 0
+        downloader = YtDlpManager(user_id=uid)
+        _active_managers[task.id] = downloader
         try:
-            downloader = YtDlpManager()
             async for line in downloader.download_stream(url, cookie_text):
                 await queue.broadcast_progress(task.id, line)
                 parsed = _parse_done_line(line)
@@ -109,13 +115,14 @@ async def create(data: TaskSubmit, request: Request, db: Session = Depends(get_d
                 task_db.commit()
             raise
         finally:
+            _active_managers.pop(task.id, None)
             task_db.close()
 
     queue.active_tasks[task.id] = asyncio.create_task(queue.enqueue(task.id, run))
     return {"task_id": task.id, "message": "Submitted"}
 
 
-@router.get("/")
+@router.get("/", response_model=List[TaskResponse])
 async def list_tasks(request: Request, db: Session = Depends(get_db)):
     uid = request.session.get("user_id")
     if not uid:
@@ -129,7 +136,7 @@ async def list_tasks(request: Request, db: Session = Depends(get_db)):
     )
 
 
-@router.get("/{tid}")
+@router.get("/{tid}", response_model=TaskResponse)
 async def get_task(tid: int, request: Request, db: Session = Depends(get_db)):
     uid = request.session.get("user_id")
     if not uid:
@@ -140,13 +147,70 @@ async def get_task(tid: int, request: Request, db: Session = Depends(get_db)):
     return task
 
 
-@router.websocket("/ws/{tid}")
-async def ws(websocket: WebSocket, tid: int, db: Session = Depends(get_db)):
-    uid = websocket.session.get("user_id")
+@router.post("/{tid}/cancel")
+async def cancel_task(tid: int, request: Request, db: Session = Depends(get_db)):
+    require_csrf(request)
+    uid = request.session.get("user_id")
     if not uid:
+        raise HTTPException(401, "Not logged in")
+    task = db.query(Task).filter(Task.id == tid, Task.user_id == uid).first()
+    if not task:
+        raise HTTPException(404, "Task not found")
+    if task.status not in ("pending", "downloading"):
+        raise HTTPException(400, "Task cannot be cancelled")
+    mgr = _active_managers.get(tid)
+    if mgr:
+        mgr.kill()
+    task.status = "cancelled"
+    task.completed_at = datetime.now(UTC)
+    db.commit()
+    return {"message": "Task cancelled"}
+
+
+@router.get("/{tid}/files")
+async def list_task_files(tid: int, request: Request, db: Session = Depends(get_db)):
+    uid = request.session.get("user_id")
+    if not uid:
+        raise HTTPException(401, "Not logged in")
+    task = db.query(Task).filter(Task.id == tid, Task.user_id == uid).first()
+    if not task:
+        raise HTTPException(404, "Task not found")
+    return YtDlpManager.list_user_files(uid)
+
+
+@router.get("/{tid}/download/{file_path:path}")
+async def download_file(
+    tid: int, file_path: str, request: Request, db: Session = Depends(get_db)
+):
+    uid = request.session.get("user_id")
+    if not uid:
+        raise HTTPException(401, "Not logged in")
+    task = db.query(Task).filter(Task.id == tid, Task.user_id == uid).first()
+    if not task:
+        raise HTTPException(404, "Task not found")
+    full_path = USERS_DIR / file_path
+    if not full_path.exists() or not full_path.is_file():
+        raise HTTPException(404, "File not found")
+    resolved = full_path.resolve()
+    users_resolved = USERS_DIR.resolve()
+    if not str(resolved).startswith(str(users_resolved)):
+        raise HTTPException(403, "Access denied")
+    return FileResponse(path=str(full_path), filename=full_path.name)
+
+
+@router.websocket("/ws/{tid}")
+async def ws(
+    websocket: WebSocket,
+    tid: int,
+    db: Session = Depends(get_db),
+    uid: int | None = Query(default=None),
+):
+    session_uid = websocket.session.get("user_id")
+    auth_uid = session_uid or uid
+    if not auth_uid:
         await websocket.close(code=1008)
         return
-    task = db.query(Task).filter(Task.id == tid, Task.user_id == uid).first()
+    task = db.query(Task).filter(Task.id == tid, Task.user_id == auth_uid).first()
     if not task:
         await websocket.close(code=1008)
         return

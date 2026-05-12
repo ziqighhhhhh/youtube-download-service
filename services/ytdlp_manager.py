@@ -7,7 +7,7 @@ import tempfile
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional, AsyncGenerator, Callable
-from config import DATA_DIR
+from config import DATA_DIR, USERS_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -17,8 +17,8 @@ class YtDlpError(RuntimeError):
 
 
 class YtDlpManager:
-    def __init__(self):
-        self.output_dir = DATA_DIR / "temp"
+    def __init__(self, user_id: int | None = None):
+        self.output_dir = USERS_DIR / str(user_id) if user_id else DATA_DIR / "temp"
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.killed = False
 
@@ -72,7 +72,9 @@ class YtDlpManager:
         return "\n".join(lines) + "\n"
 
     async def get_video_count(self, url: str, cookie_text: str | None = None) -> int:
-        with self._temporary_cookie_file(cookie_text, self.output_dir) as cookie_path:
+        cookie_tmp = DATA_DIR / "temp"
+        cookie_tmp.mkdir(parents=True, exist_ok=True)
+        with self._temporary_cookie_file(cookie_text, cookie_tmp) as cookie_path:
             cmd = [
                 "yt-dlp",
                 "--dump-single-json",
@@ -102,14 +104,13 @@ class YtDlpManager:
         return count
 
     async def download_stream(
-        self, url: str, cookie_text: str, callback: Optional[Callable] = None
+        self, url: str, cookie_text: str | None = None, callback: Optional[Callable] = None
     ) -> AsyncGenerator[str, None]:
-        tmp = Path(tempfile.mkdtemp(dir=self.output_dir))
-        with self._temporary_cookie_file(cookie_text, self.output_dir) as cookie_path:
+        cookie_tmp = DATA_DIR / "temp"
+        cookie_tmp.mkdir(parents=True, exist_ok=True)
+        with self._temporary_cookie_file(cookie_text, cookie_tmp) as cookie_path:
             cmd = [
                 "yt-dlp",
-                "--cookies",
-                str(cookie_path),
                 "--extractor-args",
                 "youtube:player_client=web",
                 "--sleep-requests",
@@ -133,9 +134,11 @@ class YtDlpManager:
                 "--newline",
                 "--progress",
                 "-o",
-                str(tmp / "%(upload_date)s_%(title).100s [%(id)s].%(ext)s"),
+                str(self.output_dir / "%(upload_date)s_%(title).100s [%(id)s].%(ext)s"),
                 url,
             ]
+            if cookie_path:
+                cmd[1:1] = ["--cookies", str(cookie_path)]
             proc = await asyncio.to_thread(
                 subprocess.Popen,
                 cmd,
@@ -169,10 +172,22 @@ class YtDlpManager:
                     proc.kill()
                 logger.exception("yt-dlp download failed")
                 yield f"ERROR: {e}"
-            finally:
-                if tmp.exists():
-                    shutil.rmtree(tmp, ignore_errors=True)
             yield f"__DONE__:{ok}:{fail}"
 
     def kill(self):
         self.killed = True
+
+    @staticmethod
+    def list_user_files(user_id: int) -> list[dict]:
+        user_dir = USERS_DIR / str(user_id)
+        if not user_dir.exists():
+            return []
+        results = []
+        for f in sorted(user_dir.iterdir()):
+            if f.is_file() and f.suffix.lower() in (".mp4", ".mkv", ".webm", ".mp3", ".m4a"):
+                results.append({
+                    "name": f.name,
+                    "size": f.stat().st_size,
+                    "path": str(f.relative_to(USERS_DIR)),
+                })
+        return results
