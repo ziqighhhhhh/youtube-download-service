@@ -42,11 +42,13 @@ async def create(data: TaskSubmit, request: Request, db: Session = Depends(get_d
     if not cookie_service.has_cookie(uid):
         raise HTTPException(400, "Submit cookies first")
 
-    cookie_path = str(cookie_service.get_user_cookie_path(uid))
+    cookie_text = cookie_service.load_cookie(uid)
+    if not cookie_text:
+        raise HTTPException(400, "Submit cookies first")
     url = str(data.url)
     manager = YtDlpManager()
     try:
-        video_count = await manager.get_video_count(url)
+        video_count = await manager.get_video_count(url, cookie_text)
     except Exception as exc:
         raise HTTPException(500, f"Pre-scan failed: {exc}") from exc
 
@@ -71,7 +73,7 @@ async def create(data: TaskSubmit, request: Request, db: Session = Depends(get_d
         fail = 0
         try:
             downloader = YtDlpManager()
-            async for line in downloader.download_stream(url, cookie_path):
+            async for line in downloader.download_stream(url, cookie_text):
                 await queue.broadcast_progress(task.id, line)
                 parsed = _parse_done_line(line)
                 if parsed:

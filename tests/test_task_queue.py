@@ -27,10 +27,10 @@ class DummyDb:
 
 
 class DummyManager:
-    async def get_video_count(self, url):
+    async def get_video_count(self, url, cookie_text=None):
         return 1
 
-    async def download_stream(self, url, cookies_file):
+    async def download_stream(self, url, cookie_text):
         yield "__DONE__:1:0"
 
 
@@ -50,7 +50,7 @@ def test_create_uses_queue_manager_enqueue(monkeypatch):
     queue = DummyQueue()
 
     monkeypatch.setattr(tasks.cookie_service, "has_cookie", lambda uid: True)
-    monkeypatch.setattr(tasks.cookie_service, "get_user_cookie_path", lambda uid: "cookies.txt")
+    monkeypatch.setattr(tasks.cookie_service, "load_cookie", lambda uid: "cookie=value")
     monkeypatch.setattr(tasks, "YtDlpManager", DummyManager)
     def create_charged_task(db, uid, url, video_count, cost, desc):
         task = tasks.Task(user_id=uid, youtube_url=url, video_count_total=video_count, cost=cost)
