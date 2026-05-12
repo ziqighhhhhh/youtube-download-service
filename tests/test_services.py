@@ -52,7 +52,9 @@ def test_save_cookie_does_not_store_plaintext_in_db(monkeypatch):
         assert cookie_service.save_cookie(Db(user), 1, "sensitive-cookie")
 
         assert user.cookie_text is None
-        assert (temp_dir / "1" / "cookies.txt").read_text(encoding="utf-8") == "sensitive-cookie"
+        stored = (temp_dir / "1" / "cookies.txt").read_bytes()
+        assert b"sensitive-cookie" not in stored
+        assert cookie_service.load_cookie(1) == "sensitive-cookie"
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
 
