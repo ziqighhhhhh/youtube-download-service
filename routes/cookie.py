@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models.user import User
 from services import cookie_service
+from services.csrf_service import require_csrf
 from schemas.all import CookieSubmit
 
 router = APIRouter(prefix="/api/cookie", tags=["cookie"])
@@ -10,6 +11,7 @@ router = APIRouter(prefix="/api/cookie", tags=["cookie"])
 
 @router.post("/")
 async def submit(data: CookieSubmit, request: Request, db: Session = Depends(get_db)):
+    require_csrf(request)
     uid = request.session.get("user_id")
     if not uid:
         raise HTTPException(401, "未登录")

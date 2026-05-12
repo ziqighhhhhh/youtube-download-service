@@ -1,5 +1,5 @@
 from pathlib import Path
-from datetime import datetime
+from datetime import UTC, datetime
 import logging
 from sqlalchemy.orm import Session
 from models.user import User
@@ -20,7 +20,7 @@ def save_cookie(db: Session, user_id: int, text: str) -> bool:
         user = db.query(User).filter(User.id == user_id).first()
         if user:
             user.cookie_text = None
-            user.cookie_updated_at = datetime.utcnow()
+            user.cookie_updated_at = datetime.now(UTC)
             db.commit()
         return True
     except Exception as e:

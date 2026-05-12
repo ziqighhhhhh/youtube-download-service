@@ -31,3 +31,7 @@ class TaskSubmit(BaseModel):
 class RechargeRequest(BaseModel):
     amount: float = Field(gt=0, le=1_000_000)
     note: str = Field(default="", max_length=500)
+
+
+class AdminRechargeRequest(BaseModel):
+    amount: float = Field(gt=0, le=1_000_000)

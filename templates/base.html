@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}YouTube 批量下载{% endblock %}</title>
+    <title>{% block title %}YouTube Batch Downloader{% endblock %}</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <link rel="stylesheet" href="{{ url_for('static', path='/css/custom.css') }}">
@@ -14,12 +14,12 @@
     <div class="container mx-auto px-4 max-w-4xl flex justify-between items-center h-16">
         <a href="/" class="text-xl font-bold text-gray-800">YT Downloader</a>
         <div class="flex items-center space-x-4 text-sm">
-            <a href="/" class="text-gray-600 hover:text-blue-600">控制台</a>
-            <a href="/history" class="text-gray-600 hover:text-blue-600">历史</a>
-            <a href="/account" class="text-gray-600 hover:text-blue-600">账户</a>
-            <a href="/bookmarklet" class="text-gray-600 hover:text-blue-600">书签</a>
-            <span class="text-blue-600 font-medium">余额: <span id="nb">-</span> 次</span>
-            <form action="/api/auth/logout" method="POST"><button class="text-gray-500 hover:text-red-600">退出</button></form>
+            <a href="/" class="text-gray-600 hover:text-blue-600">Dashboard</a>
+            <a href="/history" class="text-gray-600 hover:text-blue-600">History</a>
+            <a href="/account" class="text-gray-600 hover:text-blue-600">Account</a>
+            <a href="/bookmarklet" class="text-gray-600 hover:text-blue-600">Bookmarklet</a>
+            <span class="text-blue-600 font-medium">Balance: <span id="nb">-</span></span>
+            <button type="button" onclick="logout()" class="text-gray-500 hover:text-red-600">Logout</button>
         </div>
     </div>
 </nav>
@@ -28,14 +28,33 @@
     {% block content %}{% endblock %}
 </main>
 <script>
-function showToast(m, t='info') {
-    const d = document.createElement('div');
-    d.className = `fixed top-4 right-4 px-4 py-2 rounded shadow text-white z-50 ${t==='error'?'bg-red-500':t==='success'?'bg-green-500':'bg-blue-500'}`;
-    d.textContent = m; document.body.appendChild(d);
-    setTimeout(()=>d.remove(), 3000);
+const CSRF_TOKEN = "{{ request.session.get('csrf_token', '') }}";
+function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function csrfFetch(url, options={}) {
+    const headers = Object.assign({}, options.headers || {}, {'X-CSRF-Token': CSRF_TOKEN});
+    return fetch(url, Object.assign({}, options, {headers}));
+}
+function showToast(message, type='info') {
+    const node = document.createElement('div');
+    node.className = `fixed top-4 right-4 px-4 py-2 rounded shadow text-white z-50 ${type==='error'?'bg-red-500':type==='success'?'bg-green-500':'bg-blue-500'}`;
+    node.textContent = message;
+    document.body.appendChild(node);
+    setTimeout(()=>node.remove(), 3000);
 }
 async function loadBalance() {
-    try { const r = await fetch('/api/billing/balance'); if(r.ok){const d=await r.json(); document.querySelectorAll('#nb,#balance').forEach(e=>e.textContent=d.balance);} } catch(e){}
+    try {
+        const response = await fetch('/api/billing/balance');
+        if(response.ok){
+            const data = await response.json();
+            document.querySelectorAll('#nb,#balance').forEach(el=>el.textContent=data.balance);
+        }
+    } catch(e){}
+}
+async function logout() {
+    await csrfFetch('/api/auth/logout', {method:'POST'});
+    location.href = '/login';
 }
 if(document.getElementById('nb')) loadBalance();
 </script>

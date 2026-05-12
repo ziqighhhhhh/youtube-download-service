@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from schemas.all import RechargeRequest, TaskSubmit, UserRegister
+from schemas.all import AdminRechargeRequest, RechargeRequest, TaskSubmit, UserRegister
 
 
 def test_register_password_has_minimum_length():
@@ -23,3 +23,5 @@ def test_task_url_must_be_http_youtube_url():
 def test_recharge_amount_must_be_positive():
     with pytest.raises(ValidationError):
         RechargeRequest(amount=-1)
+    with pytest.raises(ValidationError):
+        AdminRechargeRequest(amount=0)

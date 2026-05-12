@@ -7,7 +7,8 @@ from routes import tasks
 
 class DummyRequest:
     def __init__(self, user_id=1):
-        self.session = {"user_id": user_id}
+        self.session = {"user_id": user_id, "csrf_token": "token"}
+        self.headers = {"x-csrf-token": "token"}
 
 
 class DummyDb:
@@ -51,10 +52,14 @@ def test_create_uses_queue_manager_enqueue(monkeypatch):
     monkeypatch.setattr(tasks.cookie_service, "has_cookie", lambda uid: True)
     monkeypatch.setattr(tasks.cookie_service, "get_user_cookie_path", lambda uid: "cookies.txt")
     monkeypatch.setattr(tasks, "YtDlpManager", DummyManager)
+    def create_charged_task(db, uid, url, video_count, cost, desc):
+        task = tasks.Task(user_id=uid, youtube_url=url, video_count_total=video_count, cost=cost)
+        task.id = 123
+        return task
+
     monkeypatch.setattr(tasks.billing_service, "calculate_cost", lambda count: 1)
-    monkeypatch.setattr(tasks.billing_service, "get_balance", lambda db, uid: 10)
-    monkeypatch.setattr(tasks.billing_service, "deduct_balance", lambda db, uid, cost, desc: True)
-    monkeypatch.setattr(tasks, "get_queue_manager", lambda: queue)
+    monkeypatch.setattr(tasks.billing_service, "create_charged_task", create_charged_task)
+    monkeypatch.setattr(tasks, "get_queue_manager", lambda max_concurrent=3: queue)
 
     result = asyncio.run(
         tasks.create(
@@ -67,6 +72,11 @@ def test_create_uses_queue_manager_enqueue(monkeypatch):
     assert result["task_id"] == 123
     assert queue.enqueued
     assert queue.active_tasks[123]
+
+
+def test_parse_done_line():
+    assert tasks._parse_done_line("__DONE__:2:1") == (2, 1)
+    assert tasks._parse_done_line("other") is None
 
 
 def test_websocket_rejects_unauthenticated(monkeypatch):

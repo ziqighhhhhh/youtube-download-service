@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from database import get_db
 from services import billing_service
+from services.csrf_service import require_csrf
 from models.billing import BillingRecord
 from schemas.all import RechargeRequest
 
@@ -20,6 +21,7 @@ async def balance(request: Request, db: Session = Depends(get_db)):
 async def recharge(
     data: RechargeRequest, request: Request, db: Session = Depends(get_db)
 ):
+    require_csrf(request)
     uid = request.session.get("user_id")
     if not uid:
         raise HTTPException(401, "未登录")

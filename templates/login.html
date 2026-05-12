@@ -15,7 +15,7 @@
 <script>
 document.getElementById('lf').onsubmit = async e => {
     e.preventDefault();
-    const r = await fetch('/api/auth/login', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({email:document.getElementById('em').value, password:document.getElementById('pw').value})});
+    const r = await csrfFetch('/api/auth/login', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({email:document.getElementById('em').value, password:document.getElementById('pw').value})});
     const d = await r.json();
     if(!r.ok){showToast(d.detail,'error');return;}
     showToast('登录成功','success');

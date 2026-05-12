@@ -1,7 +1,11 @@
 from sqlalchemy import Column, Integer, String, Text, Float, DateTime
 from database import Base
-from datetime import datetime
+from datetime import UTC, datetime
 import bcrypt
+
+
+def utc_now():
+    return datetime.now(UTC)
 
 
 class User(Base):
@@ -13,7 +17,7 @@ class User(Base):
     balance = Column(Float, default=0.0)
     cookie_text = Column(Text, nullable=True)
     cookie_updated_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
     is_active = Column(Integer, default=1)
 
     def set_password(self, password: str):

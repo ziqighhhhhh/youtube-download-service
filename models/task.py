@@ -1,7 +1,11 @@
 from sqlalchemy import Column, Integer, String, Text, Float, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 from database import Base
-from datetime import datetime
+from datetime import UTC, datetime
+
+
+def utc_now():
+    return datetime.now(UTC)
 
 
 class Task(Base):
@@ -16,7 +20,7 @@ class Task(Base):
     video_count_failed = Column(Integer, default=0)
     cost = Column(Float, default=0.0)
     error_message = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
     completed_at = Column(DateTime, nullable=True)
 
     user = relationship("User")

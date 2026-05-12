@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime
+from datetime import UTC, datetime
 from fastapi import (
     APIRouter,
     Depends,
@@ -9,77 +9,114 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from sqlalchemy.orm import Session
-from database import get_db
+from database import SessionLocal, get_db
 from models.task import Task
 from services import cookie_service, billing_service
+from services.csrf_service import require_csrf
 from services.ytdlp_manager import YtDlpManager
 from services.queue_manager import get_queue_manager
 from schemas.all import TaskSubmit
+from config import MAX_CONCURRENT_TASKS
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
 
+def _parse_done_line(line: str) -> tuple[int, int] | None:
+    if not line.startswith("__DONE__:"):
+        return None
+    parts = line.split(":")
+    if len(parts) != 3:
+        return None
+    try:
+        return int(parts[1]), int(parts[2])
+    except ValueError:
+        return None
+
+
 @router.post("/")
 async def create(data: TaskSubmit, request: Request, db: Session = Depends(get_db)):
+    require_csrf(request)
     uid = request.session.get("user_id")
     if not uid:
-        raise HTTPException(401, "未登录")
+        raise HTTPException(401, "Not logged in")
     if not cookie_service.has_cookie(uid):
-        raise HTTPException(400, "请先提交 Cookie")
+        raise HTTPException(400, "Submit cookies first")
 
-    cp = str(cookie_service.get_user_cookie_path(uid))
-    mgr = YtDlpManager()
+    cookie_path = str(cookie_service.get_user_cookie_path(uid))
+    url = str(data.url)
+    manager = YtDlpManager()
     try:
-        url = str(data.url)
-        vc = await mgr.get_video_count(url)
-    except Exception as e:
-        raise HTTPException(500, f"预扫描失败: {e}")
+        video_count = await manager.get_video_count(url)
+    except Exception as exc:
+        raise HTTPException(500, f"Pre-scan failed: {exc}") from exc
 
-    cost = billing_service.calculate_cost(vc)
-    bal = billing_service.get_balance(db, uid)
-    if bal < cost:
-        raise HTTPException(400, f"余额不足: 需要 {cost} 次, 当前 {bal}")
-
-    if not billing_service.deduct_balance(db, uid, cost, f"预扣: {vc} 个视频"):
-        raise HTTPException(500, "扣费失败")
-
-    task = Task(
-        user_id=uid,
-        youtube_url=url,
-        status="downloading",
-        video_count_total=vc,
-        cost=cost,
+    cost = billing_service.calculate_cost(video_count)
+    task = billing_service.create_charged_task(
+        db,
+        uid,
+        url,
+        video_count,
+        cost,
+        f"Pre-charge: {video_count} videos",
     )
-    db.add(task)
-    db.commit()
-    db.refresh(task)
+    if not task:
+        balance = billing_service.get_balance(db, uid)
+        raise HTTPException(400, f"Insufficient balance: need {cost}, current {balance}")
 
-    qm = get_queue_manager()
+    queue = get_queue_manager(MAX_CONCURRENT_TASKS)
 
     async def run():
-        y = YtDlpManager()
+        task_db = SessionLocal()
+        ok = 0
+        fail = 0
         try:
-            async for line in y.download_stream(url, cp):
-                await qm.broadcast_progress(task.id, line)
-        except Exception as e:
-            task.status = "failed"
-            task.error_message = str(e)
-            task.completed_at = datetime.utcnow()
-            db.commit()
-            return
-        task.status = "completed"
-        task.completed_at = datetime.utcnow()
-        db.commit()
+            downloader = YtDlpManager()
+            async for line in downloader.download_stream(url, cookie_path):
+                await queue.broadcast_progress(task.id, line)
+                parsed = _parse_done_line(line)
+                if parsed:
+                    ok, fail = parsed
 
-    qm.active_tasks[task.id] = asyncio.create_task(qm.enqueue(task.id, run))
-    return {"task_id": task.id, "message": "已提交"}
+            task_row = task_db.query(Task).filter(Task.id == task.id).first()
+            if not task_row:
+                return
+            task_row.video_count_success = ok
+            task_row.video_count_failed = fail
+            task_row.completed_at = datetime.now(UTC)
+            if ok == 0 and fail > 0:
+                task_row.status = "failed"
+                task_row.error_message = "All downloads failed"
+                task_db.commit()
+                billing_service.refund_balance(
+                    task_db,
+                    uid,
+                    cost,
+                    f"Refund failed task {task.id}",
+                )
+            else:
+                task_row.status = "completed"
+                task_db.commit()
+        except Exception as exc:
+            task_db.rollback()
+            task_row = task_db.query(Task).filter(Task.id == task.id).first()
+            if task_row:
+                task_row.status = "failed"
+                task_row.error_message = str(exc)
+                task_row.completed_at = datetime.now(UTC)
+                task_db.commit()
+            raise
+        finally:
+            task_db.close()
+
+    queue.active_tasks[task.id] = asyncio.create_task(queue.enqueue(task.id, run))
+    return {"task_id": task.id, "message": "Submitted"}
 
 
 @router.get("/")
 async def list_tasks(request: Request, db: Session = Depends(get_db)):
     uid = request.session.get("user_id")
     if not uid:
-        raise HTTPException(401, "未登录")
+        raise HTTPException(401, "Not logged in")
     return (
         db.query(Task)
         .filter(Task.user_id == uid)
@@ -93,11 +130,11 @@ async def list_tasks(request: Request, db: Session = Depends(get_db)):
 async def get_task(tid: int, request: Request, db: Session = Depends(get_db)):
     uid = request.session.get("user_id")
     if not uid:
-        raise HTTPException(401, "未登录")
-    t = db.query(Task).filter(Task.id == tid, Task.user_id == uid).first()
-    if not t:
-        raise HTTPException(404, "不存在")
-    return t
+        raise HTTPException(401, "Not logged in")
+    task = db.query(Task).filter(Task.id == tid, Task.user_id == uid).first()
+    if not task:
+        raise HTTPException(404, "Task not found")
+    return task
 
 
 @router.websocket("/ws/{tid}")
@@ -112,15 +149,15 @@ async def ws(websocket: WebSocket, tid: int, db: Session = Depends(get_db)):
         return
 
     await websocket.accept()
-    qm = get_queue_manager()
+    queue = get_queue_manager(MAX_CONCURRENT_TASKS)
 
-    async def h(m):
+    async def handler(message):
         try:
-            await websocket.send_text(m)
+            await websocket.send_text(message)
         except Exception:
             pass
 
-    qm.register_progress_handler(tid, h)
+    queue.register_progress_handler(tid, handler)
     try:
         while True:
             await websocket.receive_text()

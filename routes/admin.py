@@ -4,7 +4,9 @@ from database import get_db
 from models.user import User
 from models.task import Task
 from services import billing_service
+from services.csrf_service import require_csrf
 from config import ADMIN_EMAIL
+from schemas.all import AdminRechargeRequest
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -12,11 +14,11 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 def check_admin(req: Request, db: Session):
     uid = req.session.get("user_id")
     if not uid:
-        raise HTTPException(401, "未登录")
-    u = db.query(User).filter(User.id == uid).first()
-    if not u or u.email != ADMIN_EMAIL:
-        raise HTTPException(403, "需要管理员权限")
-    return u
+        raise HTTPException(401, "Not logged in")
+    user = db.query(User).filter(User.id == uid).first()
+    if not user or user.email != ADMIN_EMAIL:
+        raise HTTPException(403, "Admin access required")
+    return user
 
 
 @router.get("/users")
@@ -26,12 +28,16 @@ async def users(req: Request, db: Session = Depends(get_db)):
 
 
 @router.post("/users/{uid}/recharge")
-async def recharge(uid: int, amount: float, req: Request, db: Session = Depends(get_db)):
+async def recharge(
+    uid: int,
+    data: AdminRechargeRequest,
+    req: Request,
+    db: Session = Depends(get_db),
+):
+    require_csrf(req)
     check_admin(req, db)
-    if amount <= 0:
-        raise HTTPException(400, "充值金额必须大于 0")
-    nb = billing_service.add_balance(db, uid, amount)
-    return {"message": f"已充值，余额: {nb}"}
+    balance = billing_service.add_balance(db, uid, data.amount)
+    return {"message": f"Recharged. Balance: {balance}"}
 
 
 @router.get("/tasks")

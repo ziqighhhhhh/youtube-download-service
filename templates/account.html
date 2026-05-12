@@ -1,35 +1,34 @@
 {% extends "base.html" %}
-{% block title %}账户设置{% endblock %}
+{% block title %}Account{% endblock %}
 {% block content %}
 <div class="space-y-6">
     <div class="bg-white rounded-lg shadow p-6">
-        <h3 class="font-bold mb-4">Cookie 管理</h3>
-        <textarea id="ct" placeholder="粘贴 YouTube Cookie（从书签脚本复制）" class="w-full px-3 py-2 border border-gray-300 rounded h-32 mb-4 focus:ring-2 focus:ring-blue-500 focus:outline-none text-sm"></textarea>
-        <button onclick="saveCookie()" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition">保存 Cookie</button>
+        <h2 class="text-xl font-bold mb-4">YouTube cookies</h2>
+        <textarea id="ct" rows="8" placeholder="Paste Netscape cookies.txt content" class="w-full px-3 py-2 border border-gray-300 rounded mb-4 font-mono text-sm"></textarea>
+        <button onclick="saveCookie()" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition">Save cookies</button>
     </div>
 
     <div class="bg-white rounded-lg shadow p-6">
-        <h3 class="font-bold mb-4">充值</h3>
-        <div class="space-y-4">
-            <input type="number" id="amt" placeholder="充值金额" class="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:outline-none">
-            <input type="text" id="note" placeholder="备注" class="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:outline-none">
-            <button onclick="requestRecharge()" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition">提交充值申请</button>
+        <h2 class="text-xl font-bold mb-4">Recharge request</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <input id="amt" type="number" min="1" step="1" placeholder="Amount" class="px-3 py-2 border border-gray-300 rounded">
+            <input id="note" type="text" maxlength="500" placeholder="Note" class="px-3 py-2 border border-gray-300 rounded">
         </div>
-        <p class="mt-4 text-sm text-gray-500">MVP 阶段：请转账后等待管理员确认。收款信息请联系管理员。</p>
+        <button onclick="requestRecharge()" class="mt-4 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition">Submit request</button>
     </div>
 </div>
 {% endblock %}
 {% block extra_js %}
 <script>
 async function saveCookie() {
-    const r = await fetch('/api/cookie', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({cookie_text:document.getElementById('ct').value})});
-    const d = await r.json();
-    showToast(r.ok?'Cookie 已保存':d.detail, r.ok?'success':'error');
+    const response = await csrfFetch('/api/cookie', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({cookie_text:document.getElementById('ct').value})});
+    const data = await response.json();
+    showToast(response.ok ? data.message : data.detail, response.ok ? 'success' : 'error');
 }
 async function requestRecharge() {
-    const r = await fetch('/api/billing/recharge-request', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({amount:parseFloat(document.getElementById('amt').value)||0, note:document.getElementById('note').value})});
-    const d = await r.json();
-    showToast(r.ok?'充值申请已提交':d.detail, r.ok?'success':'error');
+    const response = await csrfFetch('/api/billing/recharge-request', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({amount:parseFloat(document.getElementById('amt').value)||0, note:document.getElementById('note').value})});
+    const data = await response.json();
+    showToast(response.ok ? data.message : data.detail, response.ok ? 'success' : 'error');
 }
 </script>
 {% endblock %}

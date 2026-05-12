@@ -1,7 +1,11 @@
 from sqlalchemy import Column, Integer, String, Text, Float, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 from database import Base
-from datetime import datetime
+from datetime import UTC, datetime
+
+
+def utc_now():
+    return datetime.now(UTC)
 
 
 class BillingRecord(Base):
@@ -13,6 +17,6 @@ class BillingRecord(Base):
     amount = Column(Float, nullable=False)
     balance_after = Column(Float, nullable=False)
     description = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
 
     user = relationship("User")
