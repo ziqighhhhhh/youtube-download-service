@@ -34,11 +34,25 @@ def test_temp_cookie_file_writes_plaintext_and_deletes():
         with YtDlpManager._temporary_cookie_file("cookie=value", temp_dir) as path:
             created.append(path)
             assert path.exists()
-            assert path.read_text(encoding="utf-8") == "cookie=value"
+            assert "cookie\tvalue" in path.read_text(encoding="utf-8")
 
         assert not created[0].exists()
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def test_browser_cookie_header_converts_to_netscape_format():
+    formatted = YtDlpManager._format_cookie_text("PREF=a=b; SID=xyz")
+
+    assert "# Netscape HTTP Cookie File" in formatted
+    assert ".youtube.com\tTRUE\t/\tTRUE\t0\tPREF\ta=b" in formatted
+    assert ".youtube.com\tTRUE\t/\tTRUE\t0\tSID\txyz" in formatted
+
+
+def test_netscape_cookie_text_is_preserved():
+    source = "# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t0\tSID\txyz\n"
+
+    assert YtDlpManager._format_cookie_text(source) == source
 
 
 def test_get_video_count_raises_on_ytdlp_failure(monkeypatch):

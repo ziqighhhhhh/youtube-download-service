@@ -46,10 +46,30 @@ class YtDlpManager:
         path = Path(name)
         try:
             with open(fd, "w", encoding="utf-8", newline="\n") as file:
-                file.write(cookie_text)
+                file.write(YtDlpManager._format_cookie_text(cookie_text))
             yield path
         finally:
             path.unlink(missing_ok=True)
+
+    @staticmethod
+    def _format_cookie_text(cookie_text: str) -> str:
+        stripped = cookie_text.strip()
+        if not stripped:
+            return stripped
+        if stripped.startswith("# Netscape HTTP Cookie File") or "\t" in stripped:
+            return cookie_text
+
+        lines = ["# Netscape HTTP Cookie File"]
+        for item in stripped.split(";"):
+            part = item.strip()
+            if not part or "=" not in part:
+                continue
+            name, value = part.split("=", 1)
+            name = name.strip()
+            if not name:
+                continue
+            lines.append(f".youtube.com\tTRUE\t/\tTRUE\t0\t{name}\t{value.strip()}")
+        return "\n".join(lines) + "\n"
 
     async def get_video_count(self, url: str, cookie_text: str | None = None) -> int:
         with self._temporary_cookie_file(cookie_text, self.output_dir) as cookie_path:
