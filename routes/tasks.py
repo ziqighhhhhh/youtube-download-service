@@ -39,18 +39,19 @@ async def create(data: TaskSubmit, request: Request, db: Session = Depends(get_d
     uid = request.session.get("user_id")
     if not uid:
         raise HTTPException(401, "Not logged in")
-    if not cookie_service.has_cookie(uid):
-        raise HTTPException(400, "Submit cookies first")
-
-    cookie_text = cookie_service.load_cookie(uid)
-    if not cookie_text:
-        raise HTTPException(400, "Submit cookies first")
+    cookie_text = cookie_service.load_cookie(uid) if cookie_service.has_cookie(uid) else None
     url = str(data.url)
     manager = YtDlpManager()
     try:
         video_count = await manager.get_video_count(url, cookie_text)
     except Exception as exc:
-        raise HTTPException(500, f"Pre-scan failed: {exc}") from exc
+        if cookie_text:
+            try:
+                video_count = await manager.get_video_count(url)
+            except Exception:
+                raise HTTPException(500, f"Pre-scan failed: {exc}") from exc
+        else:
+            raise HTTPException(500, f"Pre-scan failed: {exc}") from exc
 
     cost = billing_service.calculate_cost(video_count)
     task = billing_service.create_charged_task(

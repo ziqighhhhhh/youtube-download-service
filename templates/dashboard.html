@@ -30,7 +30,10 @@ async function submitTask(url) {
     if(!url) return showToast('Enter URL','error');
     const response = await csrfFetch('/api/tasks', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({url})});
     const data = await response.json();
-    if(!response.ok){showToast(data.detail,'error');return;}
+    if(!response.ok){
+        showToast(data.detail || 'Submit failed','error');
+        return;
+    }
     showToast('Task submitted','success');
     setTimeout(()=>location.href=`/task/${data.task_id}`, 1000);
 }

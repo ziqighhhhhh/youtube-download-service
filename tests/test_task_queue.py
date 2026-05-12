@@ -79,6 +79,32 @@ def test_parse_done_line():
     assert tasks._parse_done_line("other") is None
 
 
+def test_create_allows_missing_cookie_for_public_url(monkeypatch):
+    queue = DummyQueue()
+
+    monkeypatch.setattr(tasks.cookie_service, "has_cookie", lambda uid: False)
+    monkeypatch.setattr(tasks, "YtDlpManager", DummyManager)
+
+    def create_charged_task(db, uid, url, video_count, cost, desc):
+        task = tasks.Task(user_id=uid, youtube_url=url, video_count_total=video_count, cost=cost)
+        task.id = 124
+        return task
+
+    monkeypatch.setattr(tasks.billing_service, "calculate_cost", lambda count: 1)
+    monkeypatch.setattr(tasks.billing_service, "create_charged_task", create_charged_task)
+    monkeypatch.setattr(tasks, "get_queue_manager", lambda max_concurrent=3: queue)
+
+    result = asyncio.run(
+        tasks.create(
+            tasks.TaskSubmit(url="https://www.youtube.com/@huaxiang-Drama"),
+            DummyRequest(),
+            DummyDb(),
+        )
+    )
+
+    assert result["task_id"] == 124
+
+
 def test_websocket_rejects_unauthenticated(monkeypatch):
     class WebSocket:
         session = {}
